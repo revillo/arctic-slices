@@ -1,0 +1,645 @@
+<html>
+<head>
+<title>
+Arctic Slices
+</title>
+
+<style>
+  body, div {
+    margin: 0;
+    padding: 0;
+  }
+  
+  #scroller {
+    position: fixed;
+    top:0;
+    left: 0;
+    height: 100%;
+    width: 100%;
+    overflow-y: scroll;
+  }
+  
+  #menu {
+    position: fixed;
+    z-index: 10;
+    color: white;
+    top: 0;
+    left: 0;
+    font-size: 1.6em;
+    font-family: courier, monospace;
+  }
+  
+  select {
+    font-size: 1em;
+  }
+  
+  #menu #title {
+    font-size: 2em;
+  }
+  
+  .label {
+    margin-top: 0.5em;
+  }
+  
+  #year-marker {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    font-size: 1.2em;
+    margin-top:-0.5em;
+    margin-left: -12em;
+  }
+  
+  #options {
+    margin: 1em;
+  }
+  
+  #data-panel {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    font-size: 1.2em;
+    margin-top: -1.5em;
+    margin-left: 10em;
+  }
+  
+  #key {
+    position: fixed;
+    left: 0;
+    bottom: 0;
+    opacity: 0.6;
+    width: 300px;
+  }
+  
+  #about {
+    padding: 0.5em;
+    background: rgba(255, 255, 255, 0.52);
+    color: #000000;
+    display: inline-block;
+    margin: 1em 0;
+  }
+  
+  #about:hover {
+    background: rgba(255, 255, 255, 0.8);
+    cursor: pointer;
+  }
+  
+  unit {
+    display: inline;
+    font-size: 0.7em;
+  }
+  
+  sup {
+    font-size: 0.8em;
+  }
+  
+  #more-info {
+    position: fixed;
+    top: 50%;
+    display: none;
+    left: 50%;
+    z-index: 100;
+    width: 50em;
+    height: 30em;
+    padding: 1em;
+    overflow-y: auto;
+    margin-top: -15em;
+    margin-left: -25em;
+    font-family: courier, monospace;
+    box-shadow: 0px 0px 50px black;
+    color: #000;
+    background: white;
+  }
+  
+  p {
+    font-size: 1.3em;
+  }
+
+</style>
+
+<script src = "libs/three.r74.min.js"></script>
+<script src = "libs/handlebars.js"></script>
+<script src = "libs/jquery-1.9.0.min.js"></script>
+<script src = "libs/jquery.mousewheel.js"></script>
+<script src = "libs/underscore-min.js"></script>
+<script src = "libs/backbone-min.js"></script>
+
+<script src = "game/utils.js"></script>
+<script src = "game/game.js"></script>
+<script src = "game/gfx.js"></script>
+<script src = "ice_data.js"></script>
+
+
+
+<script id='avatarVertexShader' type='x-shader/x-vertex'>
+  varying highp vec3 lightDir;
+  varying highp vec3 modelPos;
+  varying highp vec4 eyePos;
+  varying highp vec3 norm;
+  
+  void main() {
+    //newUV = uv;
+    modelPos = position;
+    highp vec4 worldPos = modelMatrix * vec4(position,1.0);
+    eyePos = viewMatrix * worldPos;
+    lightDir = normalize((viewMatrix * vec4(0.2, 1.0, -0.2, 0.0)).xyz);  
+    gl_Position = projectionMatrix * eyePos; 
+    norm = normalize(normalMatrix * normal);
+  }
+</script>
+
+<script id='avatarFragmentShader' type='x-shader/x-fragment'>
+  varying highp vec3 lightDir;
+  varying highp vec4 eyePos;
+  varying highp vec3 norm;
+  varying highp vec3 modelPos;
+  
+  uniform sampler2D tex;
+  uniform lowp vec3 color;
+  uniform highp float gloss;
+  uniform lowp vec3 specularColor;
+  uniform lowp float ambient;
+  uniform lowp float dissolve;
+  uniform lowp float opacity;
+ 
+  uniform highp float aliasScale;
+
+
+  float rand(vec3 co){
+    return fract(sin(dot(co ,vec3(12.9898, 78.233, 453.3178))) * 43758.5453);
+  }
+  
+  void main() {
+    
+    lowp float amb = ambient;
+    
+    lowp float diffuse = dot(norm, lightDir) * (1.0-amb) + amb;
+    lowp float specular = dot(reflect(normalize(eyePos.xyz * -1.0), norm), lightDir * -1.0);
+    
+    specular = pow(max(0.0, specular), gloss);
+    
+    
+    lowp vec3 specularResult = specularColor * specular;
+
+    
+    lowp vec3 newColor = vec3(1.0, 1.0, 1.0);
+    newColor = color;
+    
+    newColor = mix(newColor, vec3(0.0, 0.067, 0.133), min(abs(eyePos.y * 0.08), 0.9));
+    
+    /*
+    #ifdef USE_MAP
+      newColor = texture2D(tex, newUV).rgb;
+    #endif
+    */
+    
+    
+    if (gloss > 0.0) {
+      gl_FragColor = vec4(newColor * (diffuse) + specularResult, opacity);
+    } else {
+      gl_FragColor = vec4(newColor * (diffuse), opacity);
+    }
+    
+    if (dissolve > 0.0) {
+      lowp float delete = rand(modelPos);
+      
+      if (delete < dissolve) {
+        discard;
+      }
+    }
+  }
+</script>
+
+
+
+</head>
+
+<body>
+
+<div id="content" style="width:100%;height:5000px;top:0;left;0">
+  <div id="view" style="width:100%;height:100%;position:fixed;top:0;left:0;">
+    <div id = "menu">
+    
+      <div id = "options">
+      
+        <div id = "title">
+          ARCTIC SLICES
+        </div>
+        <div class = "label">
+          Start Year:
+        </div>
+        <select id="startYear">
+          <option value="1979">1979</option>
+        </select>
+        <div class = "label">
+          End Year:
+        </div>
+        <select id="endYear">
+          <option value="1979">1979</option>
+        </select>
+        <div class = "label">
+          Month: 
+        </div>
+        <select id="month">
+          <option value="9">September</option>
+        </select>
+        <br>
+        <div id="about">
+          About
+        </div>
+      </div>
+
+      <div id="year-marker">
+        1979
+      </div>
+      
+      <div id="data-panel">
+        <span class = "label">
+          Extent: 
+        </span>
+        <span class = "extent">0</span>
+        <br>
+        <span class = "label">
+          Area: 
+        </span>
+        <span class = "area">0</span>
+        <br>
+        <span class = "label">
+          Volume: 
+        </span>
+        <span class = "volume">0</span>
+        <br>
+      </div>
+      <img id="key" src="key.png">
+        
+      </img>
+        
+    </div>
+    
+    
+    <div id="more-info">
+      <h3> Overview </h3>
+      <p> Each disk represents the physical state of the Arctic sea ice on the same month of different years.
+          To visualize the long term trend, months are compared across years because the ice cycles anually between a maximum size in the spring and a minimum in the fall.
+          Use the drop down selectors on the left panel to select a year interval and month.
+          <br><br>
+          <br><br>
+          Extent and area values are provided by <a href = "http://nsidc.org/arcticseaicenews/">NSIDC</a>,
+          while volume data is sourced from <a href = "http://psc.apl.uw.edu/research/projects/arctic-sea-ice-volume-anomaly/">PIOMAS</a>.
+          <br><br>
+          Arctic Slices is maintained by Github user revillo. 
+      </p>
+      <h3> Background </h3>
+      <p>
+        <i>Extent</i> is a 2D measure of the total surface area covered by ice when local concentrations are not considered (Assumed to be at 100% if at least above 15%). It is represented by the total size of a disk with the cutout hole included.
+        <br><br>
+        <i>Area</i> is a more precise measure of surface area calculated by integrating local concentrations, and is therefore smaller than extent. It is represented as the ring formed by exluding the cutout hole. 
+        <br><br>
+        (If the Arctic were a chain link fence, the 'area' metric would subtract for holes between wires whereas the 'extent' would look only at the fence's dimensions.)
+        <br><br>
+        <i>Volume</i> is the most nuanced and representative measure, as it strives to account for all the ice in the Arctic region, but may also be prone to the greatest error. The thickness of each disk represents the average thickness of ice found by volume/area.
+        <br><br>
+        Climate change from the accumulation of greenhouse gases in our atmosphere is causing the Earth to warm, and the effects on the Arctic are especially pronounced.
+        Temperatures there are rising faster than anywhere else on the planet, and the sea ice is shrinking dramatically, especially around the September minimum.
+      </p>
+      <h3> Notes </h3>
+      <p>
+        The thickness of each disk is scaled up considerably compared to area and extent in order to show the trend.
+        If thickness was drawn to scale, it would not cover even a single pixel.
+        <br><br>
+        PIOMAS volume numbers may be calculated using different satellites and accounting methods than NSIDC, so the thickness calculation of 
+        PIOMAS volume divided by NSIDC area is an approximation. 
+      </p>
+    </div>
+    
+
+  </div>
+</div>
+
+
+<script>
+var WHITE_MAT = new THREE.ShaderMaterial({
+    uniforms: {
+      color: {type: 'c', value: new THREE.Color(0xffffff)},
+      ambient: {type: 'f', value: 0.8},
+      gloss: {type: 'f', value: 0},
+      specularColor: {type: 'v3', value: new THREE.Vector3(0, 0, 0)},
+      dissolve: {type: 'f', value: 0.0},
+      opacity: {type: 'f', value: 1.0}
+    },
+    vertexShader: $('#avatarVertexShader').text(),
+    fragmentShader: $('#avatarFragmentShader').text(),
+    shading: THREE.FlatShading,
+    side: THREE.DoubleSide,
+    transparent: true
+});
+
+WHITE_MAT.sharedAsset = true;
+
+PINK_MAT = WHITE_MAT.clone();
+PINK_MAT.uniforms.color.value.setHex(0xffcccc);
+PINK_MAT.sharedAsset = true;  
+
+CLOSE_MAT = WHITE_MAT.clone();
+CLOSE_MAT.uniforms.ambient.value = 0.9;
+  
+  
+var monthNames = [0, 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  
+var OPTIONS = {
+  startYear: 1979,
+  endYear: 2016,
+  month: 9,
+  thicknessScale: 0.2
+}
+
+var EXTENT_SCALE = 1.6;
+var GAP = 1.0;
+
+var RING_ROTATION = new THREE.Matrix4();
+var RING_ROTATION_2 = new THREE.Matrix4();
+
+RING_ROTATION.makeRotationX(-Math.PI * 0.5);  
+RING_ROTATION_2.makeRotationX(Math.PI);  
+  
+var State = new GAME.State();
+var GFX = GAME.GFX;
+
+var RING_SEGMENTS = 32;
+
+var SliceView = GAME.Views.UI.extend({
+  setup: function() {
+    this.correctNSIDCArea(window.ice_data);
+  
+    $('#about').click(function() {
+      $('#more-info').toggle();
+    });
+    
+    $('#month').html('');
+    var thiz = this;
+    
+    for (var m = 1; m <= 12; m++) {
+      var $option = $('<option>');
+      $option.html(monthNames[m]);
+      $option.attr('value', m);
+      $("#month").append($option);
+    }
+    
+    $("#month").val(OPTIONS.month);
+    
+    $("#month").change(function() {
+      OPTIONS.month = Number($(this).val());
+      thiz.createSlices(OPTIONS);
+    });
+    
+    
+    $('#startYear').html('');
+    $('#endYear').html('');
+    
+    for (var y = 1979; y <= 2016; y++) {
+      var $option = $('<option>');
+      $option.html(y);
+      $option.attr('value', y);
+      
+      
+      $('#startYear').append($option);
+      $('#endYear').append($option.clone());
+    }
+    
+    $('#startYear').val(1);
+    $('#endYear').val('2016');
+    
+    $("#startYear").change(function() {
+      OPTIONS.startYear = Number($(this).val());
+      thiz.createSlices(OPTIONS);
+    });
+    $("#endYear").change(function() {
+      OPTIONS.endYear = Number($(this).val());
+      thiz.createSlices(OPTIONS);
+    });
+      
+    this.scene = new GFX.Scene3D({
+      backgroundColor: 0x001122,
+      preUpdate: this.update,
+      state: State,
+      el: this.el
+    }); 
+    
+    this.sliceGroup = new GFX.Group();
+    this.scene.add(this.sliceGroup);
+    
+    this.createSlices(OPTIONS);
+    
+    this.scroll = 0;
+    this.scene.startAnimating();
+    
+    
+    $(window).scroll(function(e) {
+      thiz.scroll = $(this).scrollTop() / ($('#content').height() - $('#view').height());
+      
+    });
+
+  },
+  
+  /*
+  
+    From NSIDC:
+  
+        The "extent" column includes the area near the pole not imaged by the
+       sensor. It is assumed to be entirely ice covered with at least 15%
+       concentration. However, the "area" column excludes the area not imaged by
+       the sensor. This area is 1.19 million square kilometers for SMMR (November
+       1978 through June 1987), 0.31 million square kilometers for SSM/I (July
+       1987 through December 2007), and 0.029 million square kilometers for SSMIS
+       (January 2008 to present). Therefore, there is a discontinuity in the
+       "area" data values in this file at the June/July 1987 boundary and at the
+       December 2007/January 2008 boundary.
+  
+
+    Adding the missing area may overrepresent area values, 
+    but is more accurate than not doing so, 
+    as the area near the pole contains mostly solid ice.
+    
+  */
+  
+  correctNSIDCArea: function(data) {
+    for (var year in data) {
+      for (var month in data[year]) {
+        var y = Number(year);
+        var m = Number(month);
+        
+        if (y <= 1987 || (y==1987 && m <= 6)) {
+          data[year][month].area += 1.19;
+        } else if (y <= 2007 || (y==2007 && m <= 12)) {
+          data[year][month].area += 0.31;
+        } else {
+          data[year][month].area += 0.029;
+        }
+      }
+    }
+  },
+  
+  getMiddleYear: function() {
+    
+  },
+  
+  handleClick: function() {
+    if (this.selectedSlice) {
+      var y = this.selectedSlice.getPosition()[1];
+      var percent = Math.abs(y / this.sliceHeight);
+      $("html, body").animate({
+        scrollTop: (percent * ($('#content').height() - $('#view').height()) )
+      });
+    }
+  },
+  
+  createSlices: function(options) {
+    var thiz = this;
+    var data = window.ice_data;
+    
+    if (this.slices) {
+      for (var s = 0; s < this.slices.length; s++) {
+        this.sliceGroup.remove(this.slices[s]);
+        this.slices[s].destroy();
+      }
+    }
+    
+    var makeGeometry = function(extent, area, volume, thicknessScale) {
+  
+      var outerRadius = Math.sqrt(extent / Math.PI) * EXTENT_SCALE;
+      var innerRadius = Math.sqrt((extent - area) / Math.PI) * EXTENT_SCALE;
+      
+      
+      var geo = new THREE.Geometry();
+      var ring1 = new THREE.RingGeometry(innerRadius, outerRadius, RING_SEGMENTS);
+      var thickness = (volume / area) * thicknessScale;
+      
+      ring1.applyMatrix(RING_ROTATION);
+      
+      GFX.tempMat4.makeTranslation(0, thickness/2, 0);
+      
+      var outerCylinder = new THREE.CylinderGeometry(outerRadius, outerRadius, thickness, RING_SEGMENTS, 1, true);
+      var innerCylinder = new THREE.CylinderGeometry(innerRadius, innerRadius, thickness, RING_SEGMENTS, 1, true);
+      GFX.flipNormals(innerCylinder);
+      
+      
+      
+      geo.merge(outerCylinder, GFX.IDENTITY);
+      geo.merge(innerCylinder, GFX.IDENTITY);
+      geo.merge(ring1, GFX.tempMat4);
+      
+      ring1.applyMatrix(RING_ROTATION_2);
+      
+      GFX.tempMat4.makeTranslation(0, -thickness/2, 0);
+
+      geo.merge(ring1, GFX.tempMat4);
+      return geo;
+      
+    }
+    
+    var y = 0;
+    this.slices = [];
+    
+    for (var year = options.startYear; year <= options.endYear; year++) {
+      var iceInfo = data[year][options.month];
+      
+      if (!iceInfo || !iceInfo.extent || !iceInfo.area || !iceInfo.volume) {
+        y -= GAP;
+        continue;
+      }
+
+      var slice = new GFX.Object3D({
+        geometry: makeGeometry(iceInfo.extent, iceInfo.area, iceInfo.volume, options.thicknessScale),
+        material: WHITE_MAT
+      })
+      
+      slice.glObject.slice = slice;
+      
+      slice.setPosition([0, y, 0]);
+      y -= (iceInfo.volume / iceInfo.area) * options.thicknessScale + GAP;
+
+      slice.year = year;
+      slice.month = month;
+      slice.info = iceInfo;
+      
+      this.slices.push(slice);
+      this.sliceGroup.add(slice);
+      
+    }
+    
+    this.sliceHeight = -y;
+  },
+  
+
+  
+  update: function(state) {
+    this.scene.setCamera(
+      [0, 0, -10],
+      [0, 0, 0],
+      [0, 1, 0]
+    );
+    
+    this.scene.setFOV(70);
+    
+    //this.scroll = (this.scroll || 0) + (state.dt * 0.1);
+    
+    var height = this.scroll * this.sliceHeight;
+    
+    this.sliceGroup.setPosition([0, height, 0]);
+    
+    if(this.closestSlice) {
+      this.closestSlice.glObject.material = WHITE_MAT;
+    } 
+    
+    var closestSlice = this.slices[0];
+    var minDist = 10000;
+
+    
+    for (var s = 0; s < this.slices.length; s++) {
+      var y = this.slices[s].getPosition()[1];
+      var dist = Math.abs(height + y);
+      if (dist < minDist) {
+        minDist = dist;
+        closestSlice = this.slices[s];
+      }
+    }
+        
+    closestSlice.glObject.material = CLOSE_MAT;
+    this.closestSlice = closestSlice;
+    
+    $('#year-marker').html(closestSlice.year);
+    $('.extent').html(closestSlice.info.extent.toFixed(2) + "<unit> million km<sup>2</sup></unit>");
+    $('.area').html(closestSlice.info.area.toFixed(2) + "<unit> million km<sup>2</sup></unit>");
+    $('.volume').html(closestSlice.info.volume.toFixed(2) + "<unit>  thousand km<sup>3</sup></unit>");
+    
+    this.frameCount = this.frameCount || 0;
+    this.frameCount++;
+    
+    if (this.frameCount % 10) {
+      this.scene.updateMouseCaster(this.mouseX, this.mouseY);
+      var inters = this.scene.mousePick(this.mouseX, this.mouseY, this.sliceGroup);
+      if (this.selectedSlice) {
+        this.selectedSlice.glObject.material = WHITE_MAT;
+        this.selectedSlice = 0;
+      }
+      if (inters && inters[0]) {
+   
+      
+        this.selectedSlice = inters[0].object.slice;
+        this.selectedSlice.glObject.material = PINK_MAT;
+      }
+    }
+  }
+});
+
+
+var sliceView = new SliceView({
+  el: $("#view")
+});
+
+
+</script>
+
+</body>
+</html>
